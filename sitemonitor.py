@@ -14,8 +14,10 @@ from socket import gethostname, setdefaulttimeout
 
 try:
     from urllib2 import urlopen
+    from urllib2 import HTTPError
 except ImportError:
     from urllib.request import urlopen
+    from urllib.error import HTTPError
 
 
 def generate_email_alerter(to_addrs, from_addr=None, use_gmail=False,
@@ -57,29 +59,26 @@ def get_host_status(url):
     if response == 0:
         return 'up'
     elif response == 1:
-        return 'no response from host'
+        return 'down (no response from host)'
     elif response == 2:
         return 'down (unknown host)'
     else:
         return 'down (unknown error)'
 
+
 def get_site_status(url):
+    valid_codes = (200, 302, 403)
     try:
         urlfile = urlopen(url)
         status_code = urlfile.code
-        if status_code in (200, 302):
+        if status_code in valid_codes:
             return 'up', urlfile
+    except HTTPError, e:
+        if e.code in valid_codes:
+            return 'up', None
     except:
         pass
     return 'down', None
-
-
-def get_headers(url):
-    '''Gets all headers from URL request and returns'''
-    try:
-        return urlopen(url).info().as_string()
-    except:
-        return 'Headers unavailable'
 
 
 def compare_site_status(prev_results, alerter):
@@ -98,7 +97,7 @@ def compare_site_status(prev_results, alerter):
         logging.info(msg)
 
         if status != "up":
-            elapsedTimeHostStatus = -1
+            elapsedTime = -1
 
         friendly_status = '%s: %s is %s. Response time: %s' % (
             type_, url, status, elapsedTime)
@@ -107,12 +106,12 @@ def compare_site_status(prev_results, alerter):
                 type_, url_to_host(url), status, elapsedTime)
 
         print(friendly_status)
-        if url in prev_results and prev_results[url]['status'] != status:
+        if 'status' in prev_results and prev_results['status'] != status:
             logging.warning(status)
             # Email status messages
             msg = ''
             if type_ == 'web':
-                msg = None if urlfile is None else urlfile.info().as_string()
+                msg = None if urlfile is None else str(urlfile.info())
             alerter(msg, friendly_status)
 
         # Save results for later pickling and utility use
