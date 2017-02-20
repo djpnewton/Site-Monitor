@@ -26,9 +26,7 @@ def generate_email_alerter(to_addrs, from_addr=None, use_gmail=False,
 
     if use_gmail:
         if username and password:
-            print 'gmail smtp'
             server = SMTP('smtp.gmail.com', 587)
-            print 'done'
             server.starttls()
         else:
             raise OptionValueError('You must provide a username and password to use GMail')
@@ -49,8 +47,12 @@ def generate_email_alerter(to_addrs, from_addr=None, use_gmail=False,
     return email_alerter, server.quit
 
 
+def url_to_host(url):
+    return url.split("//")[-1].split(":")[0].split("/")[0]
+
+
 def get_host_status(url):
-    hostname = url.split("//")[-1].split(":")[0].split("/")[0]
+    hostname = url_to_host(url)
     response = os.system("ping -c 1 -w2 " + hostname + " > /dev/null 2>&1")
     if response == 0:
         return 'up'
@@ -100,6 +102,10 @@ def compare_site_status(prev_results, alerter):
 
         friendly_status = '%s: %s is %s. Response time: %s' % (
             type_, url, status, elapsedTime)
+        if type_ == 'host':
+            friendly_status = '%s: %s is %s. Response time: %s' % (
+                type_, url_to_host(url), status, elapsedTime)
+
         print(friendly_status)
         if url in prev_results and prev_results[url]['status'] != status:
             logging.warning(status)
@@ -124,7 +130,6 @@ def compare_site_status(prev_results, alerter):
         for type_ in ('host', 'web'):
             if type_ not in prev_results[url]:
                 prev_results[url][type_] = {}
-            print url, type_
             is_status_changed_type(url, type_, prev_results[url][type_])
 
 
