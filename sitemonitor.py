@@ -26,7 +26,9 @@ def generate_email_alerter(to_addrs, from_addr=None, use_gmail=False,
 
     if use_gmail:
         if username and password:
+            print 'gmail smtp'
             server = SMTP('smtp.gmail.com', 587)
+            print 'done'
             server.starttls()
         else:
             raise OptionValueError('You must provide a username and password to use GMail')
@@ -46,6 +48,18 @@ def generate_email_alerter(to_addrs, from_addr=None, use_gmail=False,
 
     return email_alerter, server.quit
 
+
+def get_host_status(url):
+    hostname = url.split("//")[-1].split(":")[0].split("/")[0]
+    response = os.system("ping -c 1 -w2 " + hostname + " > /dev/null 2>&1")
+    if response == 0:
+        return 'up'
+    elif response == 1:
+        return 'no response from host'
+    elif response == 2:
+        return 'down (unknown host)'
+    else:
+        return 'down (unknown error)'
 
 def get_site_status(url):
     try:
@@ -69,34 +83,50 @@ def get_headers(url):
 def compare_site_status(prev_results, alerter):
     '''Report changed status based on previous results'''
 
-    def is_status_changed(url):
+    def is_status_changed_type(url, type_, prev_results):
         startTime = time.time()
-        status, urlfile = get_site_status(url)
+        urlfile = None
+        if type_ == 'web':
+            status, urlfile = get_site_status(url)
+        elif type_ == 'host':
+            status = get_host_status(url)
         endTime = time.time()
         elapsedTime = endTime - startTime
         msg = "%s took %s" % (url, elapsedTime)
         logging.info(msg)
 
         if status != "up":
-            elapsedTime = -1
+            elapsedTimeHostStatus = -1
 
-        friendly_status = '%s is %s. Response time: %s' % (
-            url, status, elapsedTime)
+        friendly_status = '%s: %s is %s. Response time: %s' % (
+            type_, url, status, elapsedTime)
         print(friendly_status)
         if url in prev_results and prev_results[url]['status'] != status:
             logging.warning(status)
             # Email status messages
-            alerter(str(get_headers(url)), friendly_status)
+            msg = ''
+            if type_ == 'web':
+                msg = None if urlfile is None else urlfile.info().as_string()
+            alerter(msg, friendly_status)
 
+        # Save results for later pickling and utility use
+        prev_results['status'] = status
+        if type_ == 'web':
+            prev_results['headers'] = None if urlfile is None else urlfile.info().headers
+        prev_results['rtime'] = elapsedTime
+
+
+    def is_status_changed(url):
         # Create dictionary for url if one doesn't exist (first time url was
         # checked)
         if url not in prev_results:
             prev_results[url] = {}
+        for type_ in ('host', 'web'):
+            if type_ not in prev_results[url]:
+                prev_results[url][type_] = {}
+            print url, type_
+            is_status_changed_type(url, type_, prev_results[url][type_])
 
-        # Save results for later pickling and utility use
-        prev_results[url]['status'] = status
-        prev_results[url]['headers'] = None if urlfile is None else urlfile.info().headers
-        prev_results[url]['rtime'] = elapsedTime
 
     return is_status_changed
 
